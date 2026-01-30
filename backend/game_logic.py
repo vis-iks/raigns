@@ -1,7 +1,9 @@
 import random
 import uuid
+import os
 from typing import Dict, List, Tuple
 from .models import GameState, Character, Pillars, Event, Choice
+from .llm_service import LLMService, MockLLMService, DeepSeekLLMService
 
 class InternalChoice:
     def __init__(self, text: str, effects: Dict[str, int]):
@@ -11,6 +13,14 @@ class InternalChoice:
 class GameEngine:
     def __init__(self):
         self.games: Dict[str, Dict] = {} # game_id -> {state: GameState, current_choices_effects: {id: effects}}
+
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if api_key:
+            print("Initializing DeepSeek LLM Service")
+            self.llm: LLMService = DeepSeekLLMService(api_key)
+        else:
+            print("Initializing Mock LLM Service")
+            self.llm: LLMService = MockLLMService()
 
     def start_game(self, character: Character) -> GameState:
         game_id = str(uuid.uuid4())
@@ -83,62 +93,6 @@ class GameEngine:
         return None
 
     def _generate_event(self, state: GameState) -> Tuple[Event, Dict[int, Dict[str, int]]]:
-        # Simple Mock LLM logic
-        templates = [
-            {
-                "text": "A neighboring kingdom requests an alliance against the northern barbarians.",
-                "choices": [
-                    {"text": "Accept alliance.", "effects": {"military": 10, "wealth": -5, "territory": 5}},
-                    {"text": "Decline politely.", "effects": {"military": -5, "stability": 5}},
-                    {"text": "Execute the messenger.", "effects": {"military": 5, "popularity": -10, "stability": -10, "territory": 2}} # Aggressive trait
-                ]
-            },
-            {
-                "text": "A mysterious plague is spreading in the capital.",
-                "choices": [
-                    {"text": "Quarantine the city.", "effects": {"popularity": -10, "stability": 10, "wealth": -5}},
-                    {"text": "Pray to the gods.", "effects": {"popularity": 5, "wealth": -2, "stability": -5}},
-                    {"text": "Ignore it.", "effects": {"popularity": -20, "stability": -20, "wealth": 10}}
-                ]
-            },
-            {
-                "text": "The treasury is running low, but the peasants are starving.",
-                "choices": [
-                    {"text": "Raise taxes.", "effects": {"wealth": 15, "popularity": -15, "stability": -5}},
-                    {"text": "Open the granaries.", "effects": {"wealth": -10, "popularity": 15, "stability": 5}},
-                ]
-            },
-            {
-                "text": "A new gold mine was discovered near the border.",
-                "choices": [
-                    {"text": "Seize it for the crown.", "effects": {"wealth": 20, "popularity": -5}},
-                    {"text": "Share profits with locals.", "effects": {"wealth": 5, "popularity": 10, "stability": 5}},
-                ]
-            }
-        ]
-
-        # Flavor text modification based on ruler type/traits
-        template = random.choice(templates)
-        description = template["text"]
-
-        if "mad" in state.character.traits:
-            description = "The voices whisper... " + description
-        if "Dictator" == state.character.ruler_type:
-            description = "My Leader! " + description
-
-        choices_list = []
-        effects_map = {}
-
-        for i, choice_data in enumerate(template["choices"]):
-            # Filter choices based on traits?
-            # For simplicity, we just add all, but maybe modify text
-            text = choice_data["text"]
-            if "sneaky" in state.character.traits and i == 1:
-                text = "(Sneaky) " + text
-
-            choices_list.append(Choice(id=i, text=text))
-            effects_map[i] = choice_data["effects"]
-
-        return Event(description=description, choices=choices_list), effects_map
+        return self.llm.generate_event(state)
 
 game_engine = GameEngine()
